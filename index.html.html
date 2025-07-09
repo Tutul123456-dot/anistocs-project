@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ani's Stocks</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-blue-100 via-gray-100 to-blue-50 font-sans min-h-screen">
+    <div class="container mx-auto p-4 max-w-4xl">
+        <h1 class="text-3xl font-bold text-center mb-8 text-blue-800">Ani's Stocks</h1>
+        
+        <!-- Form to add stock -->
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6 border border-gray-200">
+            <h2 class="text-lg font-semibold mb-4 text-gray-700">Add Stock</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                <input id="companyName" type="text" placeholder="Company Name" class="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input id="ticker" type="text" placeholder="Ticker (e.g., AAPL)" class="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input id="purchasePrice" type="number" step="0.01" placeholder="Purchase Price ($)" class="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input id="currentPrice" type="number" step="0.01" placeholder="Current Price ($)" class="border p-2 rounded bg-gray-100" readonly>
+                <input id="shares" type="number" placeholder="Number of Shares" class="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="mt-4 flex space-x-4">
+                <button onclick="fetchCurrentPrice()" class="bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600 transition">Fetch Current Price</button>
+                <button onclick="addStock()" class="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600 transition">Add Stock</button>
+            </div>
+            <div class="mt-4 flex space-x-4">
+                <button onclick="exportData()" class="bg-purple-500 text-white py-2 px-4 rounded hover:bg-purple-600 transition">Export Data</button>
+                <input id="importFile" type="file" accept=".json" class="border p-2 rounded">
+                <button onclick="importData()" class="bg-yellow-500 text-white py-2 px-4 rounded hover:bg-yellow-600 transition">Import Data</button>
+            </div>
+            <p class="mt-2 text-sm text-gray-600">Enter a valid ticker (e.g., AAPL for Apple) and click "Fetch Current Price" to get the latest price.</p>
+        </div>
+
+        <!-- Table to display stocks -->
+        <div class="bg-white p-6 rounded-lg shadow-md border border-gray-200">
+            <h2 class="text-lg font-semibold mb-4 text-gray-700">Stock Summary</h2>
+            <table id="stockTable" class="w-full border-collapse">
+                <thead>
+                    <tr class="bg-blue-100">
+                        <th class="border p-2 text-gray-700">Company</th>
+                        <th class="border p-2 text-gray-700">Purchase Price ($)</th>
+                        <th class="border p-2 text-gray-700">Current Price ($)</th>
+                        <th class="border p-2 text-gray-700">Shares</th>
+                        <th class="border p-2 text-gray-700">Purchase Total ($)</th>
+                        <th class="border p-2 text-gray-700">Current Total ($)</th>
+                        <th class="border p-2 text-gray-700">Profit/Loss ($)</th>
+                        <th class="border p-2 text-gray-700">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="stockTableBody"></tbody>
+            </table>
+            <div class="mt-4 text-right space-y-2">
+                <p id="totalPurchase" class="font-semibold text-gray-700">Total Purchase Amount: $0.00</p>
+                <p id="totalCurrent" class="font-semibold text-gray-700">Total Current Amount: $0.00</p>
+                <p id="totalProfitLoss" class="font-semibold text-gray-700">Total Profit/Loss: $0.00</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let stocks = JSON.parse(localStorage.getItem('stocks')) || [];
+
+        // Load saved stocks on page load
+        window.onload = function() {
+            if (stocks.length > 0) {
+                updateTable();
+            }
+        };
+
+        async function fetchCurrentPrice() {
+            const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+            const apiKey = 'E146G8USOQ6EQTXS';
+            const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${apiKey}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data['Global Quote'] && data['Global Quote']['05. price']) {
+                    const currentPrice = parseFloat(data['Global Quote']['05. price']);
+                    document.getElementById('currentPrice').value = currentPrice.toFixed(2);
+                } else {
+                    alert('Error: Invalid ticker or no price data available. Please try another ticker (e.g., AAPL, TSLA).');
+                }
+            } catch (error) {
+                alert('Error fetching price. Check your internet connection or API key.');
+                console.error(error);
+            }
+        }
+
+        async function refreshStockPrice(index) {
+            const stock = stocks[index];
+            const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${stock.ticker}&apikey=E146G8USOQ6EQTXS`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                if (data['Global Quote'] && data['Global Quote']['05. price']) {
+                    stock.currentPrice = parseFloat(data['Global Quote']['05. price']);
+                    updateTable();
+                    localStorage.setItem('stocks', JSON.stringify(stocks));
+                } else {
+                    alert(`Error refreshing price for ${stock.company}. Please check ticker or try again.`);
+                }
+            } catch (error) {
+                alert('Error refreshing price. Check your internet connection.');
+                console.error(error);
+            }
+        }
+
+        function deleteStock(index) {
+            stocks.splice(index, 1);
+            updateTable();
+            localStorage.setItem('stocks', JSON.stringify(stocks));
+        }
+
+        function addStock() {
+            const company = document.getElementById('companyName').value;
+            const ticker = document.getElementById('ticker').value.trim().toUpperCase();
+            const purchasePrice = parseFloat(document.getElementById('purchasePrice').value);
+            const currentPrice = parseFloat(document.getElementById('currentPrice').value);
+            const shares = parseInt(document.getElementById('shares').value);
+
+            if (company && ticker && !isNaN(purchasePrice) && !isNaN(currentPrice) && !isNaN(shares) && shares > 0) {
+                stocks.push({ company, ticker, purchasePrice, currentPrice, shares });
+                updateTable();
+                localStorage.setItem('stocks', JSON.stringify(stocks));
+                clearInputs();
+            } else {
+                alert('Please fill in all fields with valid values. Ensure you have fetched the current price.');
+            }
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(stocks);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'stocks.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function importData() {
+            const fileInput = document.getElementById('importFile');
+            const file = fileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        stocks = JSON.parse(e.target.result);
+                        updateTable();
+                        localStorage.setItem('stocks', JSON.stringify(stocks));
+                        alert('Data imported successfully!');
+                    } catch (error) {
+                        alert('Error importing data. Please ensure the file is a valid JSON.');
+                        console.error(error);
+                    }
+                };
+                reader.readAsText(file);
+            } else {
+                alert('Please select a JSON file to import.');
+            }
+        }
+
+        function updateTable() {
+            const tableBody = document.getElementById('stockTableBody');
+            tableBody.innerHTML = '';
+            let totalPurchase = 0;
+            let totalCurrent = 0;
+            let totalProfitLoss = 0;
+
+            stocks.forEach((stock, index) => {
+                const purchaseTotal = stock.purchasePrice * stock.shares;
+                const currentTotal = stock.currentPrice * stock.shares;
+                const profitLoss = currentTotal - purchaseTotal;
+
+                totalPurchase += purchaseTotal;
+                totalCurrent += currentTotal;
+                totalProfitLoss += profitLoss;
+
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="border p-2">${stock.company}</td>
+                    <td class="border p-2">$${stock.purchasePrice.toFixed(2)}</td>
+                    <td class="border p-2">$${stock.currentPrice.toFixed(2)}</td>
+                    <td class="border p-2">${stock.shares}</td>
+                    <td class="border p-2">$${purchaseTotal.toFixed(2)}</td>
+                    <td class="border p-2">$${currentTotal.toFixed(2)}</td>
+                    <td class="border p-2 ${profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}">
+                        $${profitLoss.toFixed(2)}
+                    </td>
+                    <td class="border p-2 flex space-x-2">
+                        <button onclick="refreshStockPrice(${index})" class="bg-green-500 text-white py-1 px-3 rounded hover:bg-green-600 text-sm">Refresh</button>
+                        <button onclick="deleteStock(${index})" class="bg-red-500 text-white py-1 px-2 rounded hover:bg-red-600 text-xs">Delete</button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+
+            document.getElementById('totalPurchase').textContent = 
+                `Total Purchase Amount: $${totalPurchase.toFixed(2)}`;
+            document.getElementById('totalCurrent').textContent = 
+                `Total Current Amount: $${totalCurrent.toFixed(2)}`;
+            document.getElementById('totalProfitLoss').textContent = 
+                `Total Profit/Loss: $${totalProfitLoss.toFixed(2)}`;
+        }
+
+        function clearInputs() {
+            document.getElementById('companyName').value = '';
+            document.getElementById('ticker').value = '';
+            document.getElementById('purchasePrice').value = '';
+            document.getElementById('currentPrice').value = '';
+            document.getElementById('shares').value = '';
+            document.getElementById('importFile').value = '';
+        }
+    </script>
+</body>
+</html>
